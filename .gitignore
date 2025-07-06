@@ -43,3 +43,5 @@ build/
 test_*.pdf
 test_*.wav
 test_*.mp3
+
+package-lock.json
