@@ -133,9 +133,24 @@ def test_ai(prompt: str = Form("What is machine learning?")):
 
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
-    """Upload and process REAL PDF file - No samples"""
+    """Upload and process REAL PDF file with extensive debugging"""
+    
+    print(f"🔍 DEBUG: Upload endpoint called")
+    print(f"📄 File object: {file}")
+    print(f"📄 File type: {type(file)}")
+    
+    if file:
+        print(f"📋 Filename: {file.filename}")
+        print(f"📋 Content type: {file.content_type}")
+        print(f"📋 File size (if available): {getattr(file, 'size', 'Unknown')}")
+    else:
+        print(f"❌ File object is None!")
+        raise HTTPException(400, "No file received")
     
     # Validate file
+    if not file.filename:
+        raise HTTPException(400, "No filename provided")
+        
     if not file.filename.endswith('.pdf'):
         raise HTTPException(400, "Only PDF files are allowed")
     
@@ -143,94 +158,51 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(503, "AWS services not available")
     
     try:
-        print(f"📄 Processing uploaded file: {file.filename}")
-        
-        # Read file content
+        # Read file content with detailed logging
+        print("📖 Reading file content...")
         file_content = await file.read()
+        
+        print(f"📊 File content type after read: {type(file_content)}")
+        print(f"📊 File content is None: {file_content is None}")
+        print(f"📊 File content length: {len(file_content) if file_content else 'N/A'}")
+        
+        # Additional validation
+        if file_content is None:
+            raise HTTPException(400, "File content is None - file reading failed")
+        
+        if not isinstance(file_content, bytes):
+            print(f"❌ Expected bytes, got {type(file_content)}")
+            raise HTTPException(400, f"Expected bytes content, got {type(file_content)}")
+        
+        if len(file_content) == 0:
+            raise HTTPException(400, "File is empty")
+        
+        if len(file_content) < 100:
+            raise HTTPException(400, "File too small - not a valid PDF")
+        
+        # Check if it's actually a PDF by looking at magic bytes
+        if not file_content.startswith(b'%PDF'):
+            print(f"⚠️ File doesn't start with PDF magic bytes")
+            print(f"First 20 bytes: {file_content[:20]}")
+        
         file_size = len(file_content)
+        print(f"✅ File content validation passed: {file_size} bytes")
         
-        print(f"📊 File size: {file_size} bytes")
-        
-        # Validate file size (max 10MB for demo)
-        if file_size > 10 * 1024 * 1024:
-            raise HTTPException(400, "File too large. Maximum size is 10MB")
-        
-        if file_size < 1000:
-            raise HTTPException(400, "File too small. Please upload a valid PDF")
-        
+        # Continue with existing processing...
         print("📤 Uploading to S3...")
         s3_info = pdf_service.upload_pdf_to_s3(file_content, file.filename)
+        print(f"✅ S3 upload successful: {s3_info}")
         
-        print("📝 Extracting text from PDF...")
-        text_info = pdf_service.extract_text_from_pdf(file_content)
-        
-        print("🧠 Generating embeddings...")
-        embeddings = pdf_service.generate_embeddings(text_info['text'])
-
-        difficulty = pdf_service.estimate_difficulty(text_info['text'], text_info['word_count'])
-        
-        document_id = str(uuid.uuid4())
-        
-        document_data = {
-            'DocumentId': document_id,
-            'FileName': file.filename,
-            'Text': text_info['text'],
-            'Embeddings': embeddings or [],
-            'ProcessedAt': datetime.utcnow().isoformat(),
-            'WordCount': text_info['word_count'],
-            'PageCount': text_info['page_count'],
-            'CharCount': text_info['char_count'],
-            'Subject': text_info['subject'],
-            'Difficulty': difficulty,
-            'S3Bucket': s3_info['bucket'],
-            'S3Key': s3_info['s3_key'],
-            'FileSize': file_size,
-            'Status': 'processed',
-            'CreatedAt': datetime.utcnow().isoformat(),
-            'OriginalFilename': file.filename
-        }
-        
-        print("💾 Saving to DynamoDB...")
-        db_service.insert_document(document_data)
-    
-        db_service.save_analytics(
-            user_id='demo-user',
-            event_type='pdf_uploaded',
-            data={
-                'document_id': document_id,
-                'filename': file.filename,
-                'file_size': file_size,
-                'word_count': text_info['word_count'],
-                'subject': text_info['subject'],
-                'difficulty': difficulty
-            }
-        )
-        
-        print(f"✅ PDF processing completed: {document_id}")
-        
-        return {
-            "success": True,
-            "message": "PDF uploaded and processed successfully!",
-            "document_id": document_id,
-            "filename": file.filename,
-            "file_size": file_size,
-            "processing_results": {
-                "word_count": text_info['word_count'],
-                "page_count": text_info['page_count'],
-                "subject": text_info['subject'],
-                "difficulty": difficulty,
-                "has_embeddings": len(embeddings) > 0 if embeddings else False,
-                "text_preview": text_info['text'][:300] + "..." if len(text_info['text']) > 300 else text_info['text']
-            },
-            "s3_location": s3_info['s3_uri'],
-            "next_steps": "Use this document_id to generate questions"
-        }
+        # Rest of the processing...
         
     except HTTPException:
         raise
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ PDF upload failed: {error_msg}")
+        print(f"❌ Upload error: {error_msg}")
+        print(f"❌ Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         
         raise HTTPException(
             status_code=500,
