@@ -73,7 +73,7 @@ def lambda_handler(event, context):
         # Generate embeddings using Bedrock Titan
         embeddings = []
         try:
-            # Limit text to avoid token limits (Titan has ~8000 token limit)
+            # Limit text to avoid token limits 
             text_for_embedding = text_content[:7000]
             
             embedding_response = bedrock_client.invoke_model(
