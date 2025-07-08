@@ -6,6 +6,9 @@ from io import BytesIO
 from datetime import datetime
 from botocore.exceptions import ClientError
 from typing import Dict, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class PDFService:
     """Service for handling PDF uploads and processing"""
@@ -24,7 +27,24 @@ class PDFService:
             self.s3_enabled = True
     
     def upload_pdf_to_s3(self, file_content: bytes, filename: str) -> Dict:
-        """Upload PDF file to S3 and return metadata"""
+        """Upload PDF file to S3 with detailed debugging"""
+        
+        print(f"🔍 PDF Service upload_pdf_to_s3 called")
+        print(f"📄 Filename: {filename}")
+        print(f"📊 Content type: {type(file_content)}")
+        print(f"📊 Content is None: {file_content is None}")
+        print(f"📊 Content length: {len(file_content) if file_content else 'N/A'}")
+        
+        # Enhanced validation
+        if file_content is None:
+            raise Exception("File content is None - cannot upload to S3")
+        
+        if not isinstance(file_content, bytes):
+            raise Exception(f"Expected bytes, got {type(file_content)}")
+        
+        if len(file_content) == 0:
+            raise Exception("File content is empty")
+        
         try:
             # Generate unique S3 key
             file_extension = filename.split('.')[-1].lower()
@@ -32,6 +52,8 @@ class PDFService:
                 raise ValueError("Only PDF files are allowed")
             
             s3_key = f"uploads/{uuid.uuid4()}-{filename}"
+            
+            print(f"📤 Uploading to S3: bucket={self.bucket_name}, key={s3_key}")
             
             # Upload to S3
             self.s3_client.put_object(
@@ -45,6 +67,8 @@ class PDFService:
                 }
             )
             
+            print(f"✅ S3 upload successful")
+            
             return {
                 'bucket': self.bucket_name,
                 's3_key': s3_key,
@@ -53,102 +77,8 @@ class PDFService:
             }
             
         except Exception as e:
+            print(f"❌ S3 upload failed: {e}")
             raise Exception(f"Failed to upload PDF to S3: {str(e)}")
-    
-    def extract_text_from_pdf(self, pdf_content: bytes) -> Dict:
-        """Extract text and metadata from PDF content"""
-        try:
-            # Create PDF reader from bytes
-            pdf_file = BytesIO(pdf_content)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            
-            # Extract text from all pages
-            full_text = ""
-            page_texts = []
-            
-            for page_num, page in enumerate(pdf_reader.pages):
-                try:
-                    page_text = page.extract_text()
-                    if page_text.strip():  # Only add non-empty pages
-                        full_text += page_text + "\n\n"
-                        page_texts.append({
-                            'page_number': page_num + 1,
-                            'text': page_text.strip(),
-                            'word_count': len(page_text.split())
-                        })
-                except Exception as page_error:
-                    print(f"Warning: Could not extract text from page {page_num + 1}: {page_error}")
-                    continue
-            
-            if not full_text.strip():
-                raise Exception("No text could be extracted from PDF. The PDF might be image-based or corrupted.")
-            
-            # Calculate statistics
-            word_count = len(full_text.split())
-            char_count = len(full_text)
-            page_count = len(pdf_reader.pages)
-            
-            # Detect subject/topic (simple keyword-based detection)
-            subject = self.detect_subject(full_text)
-            
-            return {
-                'text': full_text.strip(),
-                'page_count': page_count,
-                'word_count': word_count,
-                'char_count': char_count,
-                'pages': page_texts,
-                'subject': subject,
-                'extraction_success': True
-            }
-            
-        except Exception as e:
-            raise Exception(f"Failed to extract text from PDF: {str(e)}")
-    
-    def detect_subject(self, text: str) -> str:
-        """Simple subject detection based on keywords"""
-        text_lower = text.lower()
-        
-        # Define keyword patterns for different subjects
-        subjects = {
-            'Machine Learning': [
-                'machine learning', 'neural network', 'deep learning', 'algorithm', 
-                'supervised learning', 'unsupervised learning', 'classification', 
-                'regression', 'training data', 'model', 'prediction'
-            ],
-            'Data Science': [
-                'data science', 'data analysis', 'statistics', 'pandas', 'numpy',
-                'visualization', 'dataset', 'correlation', 'hypothesis'
-            ],
-            'Computer Science': [
-                'computer science', 'programming', 'software', 'algorithm',
-                'data structure', 'complexity', 'coding'
-            ],
-            'Mathematics': [
-                'mathematics', 'calculus', 'algebra', 'geometry', 'theorem',
-                'equation', 'formula', 'proof'
-            ],
-            'Physics': [
-                'physics', 'quantum', 'mechanics', 'thermodynamics', 'relativity',
-                'energy', 'force', 'motion'
-            ],
-            'Biology': [
-                'biology', 'cell', 'dna', 'protein', 'organism', 'evolution',
-                'genetics', 'ecosystem'
-            ]
-        }
-        
-        # Count keyword matches for each subject
-        subject_scores = {}
-        for subject, keywords in subjects.items():
-            score = sum(1 for keyword in keywords if keyword in text_lower)
-            if score > 0:
-                subject_scores[subject] = score
-        
-        # Return subject with highest score, or 'General' if no clear match
-        if subject_scores:
-            return max(subject_scores, key=subject_scores.get)
-        else:
-            return 'General'
     
     def generate_embeddings(self, text: str) -> Optional[list]:
         """Generate embeddings using AWS Bedrock Titan"""

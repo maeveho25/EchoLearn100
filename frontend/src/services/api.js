@@ -47,28 +47,72 @@ export const api = {
       });
 
       console.log('📡 Upload response status:', response.status);
+      console.log('📡 Upload response headers:', response.headers);
 
+      // Check if response is ok
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Upload failed:', errorText);
-        
         let errorMessage = `Upload failed (${response.status})`;
+        
         try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.detail || errorJson.error || errorMessage;
-        } catch {
-          // If not JSON, use raw text
-          errorMessage = errorText || errorMessage;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorMessage = errorJson.detail || errorJson.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          console.error('❌ Could not parse error response:', parseError);
+          errorMessage = `Upload failed (${response.status}) - ${response.statusText}`;
         }
         
         throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      // Check if response has content
+      const contentLength = response.headers.get('content-length');
+      if (contentLength === '0' || contentLength === null) {
+        throw new Error('Server returned empty response');
+      }
+
+      // Parse JSON response
+      let result;
+      try {
+        const responseText = await response.text();
+        console.log('📡 Raw response:', responseText);
+        
+        if (!responseText) {
+          throw new Error('Empty response from server');
+        }
+        
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error('❌ JSON parse error:', jsonError);
+        throw new Error('Server returned invalid JSON response');
+      }
+
       console.log('✅ Upload successful:', result);
       
+      // Validate response structure
+      if (typeof result !== 'object' || result === null) {
+        throw new Error('Invalid response format from server');
+      }
+
+      // Check for success field
+      if (result.success === undefined) {
+        // If no success field, check for other indicators
+        if (result.document_id && result.filename) {
+          result.success = true;
+        } else if (result.error || result.detail) {
+          result.success = false;
+        } else {
+          throw new Error('Unexpected response format from server');
+        }
+      }
+
       if (!result.success) {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(result.error || result.detail || 'Upload failed');
       }
 
       return result;
@@ -77,7 +121,7 @@ export const api = {
       console.error('❌ Upload error:', error);
       
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to server. Please check if backend is running.');
+        throw new Error('Cannot connect to server. Please check if backend is running at ' + API_BASE_URL);
       }
       
       throw error;
@@ -113,25 +157,53 @@ export const api = {
       console.log('📡 Question generation response:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Question generation failed:', errorText);
-        
         let errorMessage = `Question generation failed (${response.status})`;
+        
         try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.detail || errorJson.error || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorMessage = errorJson.detail || errorJson.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          errorMessage = `Question generation failed (${response.status}) - ${response.statusText}`;
         }
         
         throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      // Parse response safely
+      let result;
+      try {
+        const responseText = await response.text();
+        if (!responseText) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        throw new Error('Server returned invalid JSON response');
+      }
+
       console.log('✅ Questions generated:', result);
       
+      // Validate response
+      if (typeof result !== 'object' || result === null) {
+        throw new Error('Invalid response format');
+      }
+
+      if (result.success === undefined) {
+        if (result.questions && Array.isArray(result.questions)) {
+          result.success = true;
+        } else {
+          result.success = false;
+        }
+      }
+
       if (!result.success) {
-        throw new Error(result.error || 'Question generation failed');
+        throw new Error(result.error || result.detail || 'Question generation failed');
       }
 
       return result;
@@ -172,25 +244,53 @@ export const api = {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Speech analysis failed:', errorText);
-        
         let errorMessage = `Speech analysis failed (${response.status})`;
+        
         try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.detail || errorJson.error || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorMessage = errorJson.detail || errorJson.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          errorMessage = `Speech analysis failed (${response.status}) - ${response.statusText}`;
         }
         
         throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      // Parse response safely
+      let result;
+      try {
+        const responseText = await response.text();
+        if (!responseText) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        throw new Error('Server returned invalid JSON response');
+      }
+
       console.log('✅ Speech analyzed:', result);
       
+      // Validate response
+      if (typeof result !== 'object' || result === null) {
+        throw new Error('Invalid response format');
+      }
+
+      if (result.success === undefined) {
+        if (result.transcript && result.similarity_score !== undefined) {
+          result.success = true;
+        } else {
+          result.success = false;
+        }
+      }
+
       if (!result.success) {
-        throw new Error(result.error || 'Speech analysis failed');
+        throw new Error(result.error || result.detail || 'Speech analysis failed');
       }
 
       return result;
@@ -206,77 +306,6 @@ export const api = {
     }
   },
 
-  async listDocuments(filters = {}) {
-    console.log('📚 Fetching documents with filters:', filters);
-
-    try {
-      const params = new URLSearchParams();
-      if (filters.subject) params.append('subject', filters.subject);
-      if (filters.search) params.append('search', filters.search);
-      
-      const url = `${API_BASE_URL}/documents${params.toString() ? '?' + params.toString() : ''}`;
-      
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Document fetch failed:', errorText);
-        throw new Error(`Failed to fetch documents (${response.status})`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Documents fetched:', result);
-      
-      return result;
-
-    } catch (error) {
-      console.error('❌ Document fetch error:', error);
-      
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to server to fetch documents');
-      }
-      
-      throw error;
-    }
-  },
-
-  async getDocumentDetails(documentId) {
-    console.log('📖 Fetching document details:', documentId);
-
-    if (!documentId) {
-      throw new Error('Document ID is required');
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/documents/${documentId}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Document details fetch failed:', errorText);
-        
-        if (response.status === 404) {
-          throw new Error('Document not found');
-        }
-        
-        throw new Error(`Failed to fetch document details (${response.status})`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Document details fetched:', result);
-      
-      return result;
-
-    } catch (error) {
-      console.error('❌ Document details error:', error);
-      
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to server to fetch document details');
-      }
-      
-      throw error;
-    }
-  },
-
   async checkHealth() {
     console.log('🏥 Checking API health...');
 
@@ -286,13 +315,25 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
+        timeout: 10000, // 10 second timeout
       });
 
       if (!response.ok) {
         throw new Error(`Health check failed (${response.status})`);
       }
 
-      const result = await response.json();
+      // Parse response safely
+      let result;
+      try {
+        const responseText = await response.text();
+        if (!responseText) {
+          throw new Error('Empty health check response');
+        }
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        throw new Error('Invalid health check response');
+      }
+
       console.log('✅ Health check successful:', result);
       
       return result;
@@ -303,11 +344,37 @@ export const api = {
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         return { 
           status: 'unhealthy', 
-          error: 'Cannot connect to server',
-          timestamp: new Date().toISOString()
+          error: 'Cannot connect to server at ' + API_BASE_URL,
+          timestamp: new Date().toISOString(),
+          suggestion: 'Please check if backend is running'
         };
       }
       
+      return {
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  },
+
+  async debugEnvironment() {
+    console.log('🔍 Checking environment debug info...');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/debug-env`);
+
+      if (!response.ok) {
+        throw new Error(`Debug request failed (${response.status})`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Environment debug successful:', result);
+      
+      return result;
+
+    } catch (error) {
+      console.error('❌ Environment debug failed:', error);
       throw error;
     }
   },
@@ -325,12 +392,36 @@ export const api = {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ AI test failed:', errorText);
-        throw new Error(`AI test failed (${response.status})`);
+        let errorMessage = `AI test failed (${response.status})`;
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorMessage = errorJson.detail || errorJson.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          errorMessage = `AI test failed (${response.status}) - ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      // Parse response safely
+      let result;
+      try {
+        const responseText = await response.text();
+        if (!responseText) {
+          throw new Error('Empty AI test response');
+        }
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        throw new Error('Invalid AI test response');
+      }
+
       console.log('✅ AI test successful:', result);
       
       return result;
