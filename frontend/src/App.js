@@ -1,6 +1,6 @@
-// src/App.js
 import React, { useState, useEffect } from 'react';
 import { api } from './services/api';
+import LearningPage from './components/LearningPage';
 
 const FileUpload = ({ onUpload, isLoading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -260,6 +260,8 @@ function App() {
   const [apiHealth, setApiHealth] = useState(null);
   const [particles, setParticles] = useState([]);
   const [uploadedDocument, setUploadedDocument] = useState(null);
+  const [currentView, setCurrentView] = useState('upload'); // 'upload' or 'learning'
+  const [questionsForLearning, setQuestionsForLearning] = useState([]);
 
   useEffect(() => {
     checkApiHealth();
@@ -326,9 +328,6 @@ function App() {
    • Pages: ${uploadResult.processing_results?.page_count || 'N/A'}
    • Subject: ${uploadResult.processing_results?.subject || 'General'}
    • Difficulty: ${uploadResult.processing_results?.difficulty || 5}/10
-
-💡 Content Preview:
-${uploadResult.processing_results?.text_preview || 'No preview available'}
 
 🤖 Generating AI questions...`;
 
@@ -413,12 +412,58 @@ Please try again or check the system status.`;
     }
   };
 
+  const handleStartLearning = async (questionType = 'multiple_choice', difficulty = 5) => {
+    if (!uploadedDocument) {
+      alert('Please upload a document first!');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const questionsResult = await api.generateQuestions(uploadedDocument.document_id, {
+        difficulty: difficulty,
+        numQuestions: 5,
+        questionType: questionType
+      });
+
+      if (!questionsResult.success) {
+        throw new Error(questionsResult.error || 'Failed to generate questions');
+      }
+
+      setQuestionsForLearning(questionsResult.questions);
+      setCurrentView('learning');
+      
+    } catch (error) {
+      console.error('❌ Failed to start learning:', error);
+      setError(`Failed to start learning: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBackToUpload = () => {
+    setCurrentView('upload');
+    setQuestionsForLearning([]);
+  };
+
   const handleRetry = () => {
     setError(null);
     setGeneratedText('');
     checkApiHealth();
   };
 
+  // Show Learning Page
+  if (currentView === 'learning') {
+    return (
+      <LearningPage
+        documentId={uploadedDocument.document_id}
+        questions={questionsForLearning}
+        onBack={handleBackToUpload}
+      />
+    );
+  }
+
+  // Show Upload Page
   return (
     <div className="min-h-screen relative overflow-hidden bg-black">
       {/* Animated Background */}
@@ -534,42 +579,36 @@ Please try again or check the system status.`;
           {uploadedDocument && !isLoading && (
             <div className="mt-8 flex flex-wrap gap-4 justify-center">
               <button
-                onClick={() => handleFileUpload(null)}
+                onClick={() => handleStartLearning('multiple_choice', 5)}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:scale-105 transition-all"
+              >
+                🎯 Start Multiple Choice Quiz
+              </button>
+              
+              <button
+                onClick={() => handleStartLearning('short_answer', 7)}
+                className="px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-xl hover:scale-105 transition-all"
+              >
+                🎙️ Start Voice Learning
+              </button>
+              
+              <button
+                onClick={() => handleStartLearning('mixed', 6)}
                 className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:scale-105 transition-all"
+              >
+                🧠 Mixed Learning Mode
+              </button>
+              
+              <button
+                onClick={() => handleFileUpload(null)}
+                className="px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:scale-105 transition-all"
               >
                 📄 Upload Another PDF
               </button>
               
               <button
-                onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    const questionsResult = await api.generateQuestions(uploadedDocument.document_id, {
-                      difficulty: 8,
-                      numQuestions: 3,
-                      questionType: 'short_answer'
-                    });
-                    
-                    const newText = `\n\n🧠 Advanced Short Answer Questions:\n\n${questionsResult.questions
-                      .map((q, i) => `${i + 1}. ${q.question}\n   💡 Expected keywords: ${q.keywords?.join(', ') || 'N/A'}`)
-                      .join('\n\n')}`;
-                    
-                    setGeneratedText(prev => prev + newText);
-                  } catch (error) {
-                    setError(error.message);
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-                className="px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-xl hover:scale-105 transition-all"
-                disabled={isLoading}
-              >
-                🧠 Generate Advanced Questions
-              </button>
-              
-              <button
                 onClick={() => checkApiHealth()}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:scale-105 transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-xl hover:scale-105 transition-all"
               >
                 🏥 Check System Status
               </button>
